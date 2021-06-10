@@ -28,6 +28,7 @@ CacheController::CacheController(CacheInfo ci, string tracefile) {
 	
 	// create your cache structure
 	// ...
+    this->cache = new Cache(ci);
 
 	// manual test code to see if the cache is behaving properly
 	// will need to be changed slightly to match the function prototype
@@ -40,6 +41,10 @@ CacheController::CacheController(CacheInfo ci, string tracefile) {
 	cacheAccess(false, 128);
 	cacheAccess(false, 256);
 	*/
+}
+
+CacheController::~CacheController() {
+    delete this->cache;
 }
 
 /*
@@ -135,7 +140,8 @@ void CacheController::logEntry(ofstream& outfile, CacheResponse* response) {
 */
 CacheController::AddressInfo CacheController::getAddressInfo(unsigned long int address) {
 	AddressInfo ai;
-	// this code should be changed to assign the proper index and tag
+    ai.setIndex = (address >> this->ci.numByteOffsetBits) & (this->ci.numberSets - 1);
+    ai.tag = address >> (this->ci.numByteOffsetBits + this->ci.numSetIndexBits);
 	return ai;
 }
 
@@ -155,6 +161,15 @@ void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigne
 	response->cycles = 0;
 	
 	// your code needs to update the global counters that track the number of hits, misses, and evictions
+    for(unsigned long int access_block = address & ~(this->ci.blockSize-1); access_block < address+numBytes; access_block+=this->ci.blockSize) {
+        this->cache->access(response, isWrite, ai.setIndex, ai.tag, numBytes);
+        // Calculate cycles for cache miss
+        if(response->misses) {
+            if(access_block != (address & ~(this->ci.blockSize-1))) response->cycles++;
+            else response->cycles+= this->ci.memoryAccessCycles;
+        }
+        response->cycles+= this->ci.cacheAccessCycles;
+    }
 
 	if (response->hits > 0)
 		cout << "Operation at address " << std::hex << address << " caused " << response->hits << " hit(s)." << std::dec << endl;
@@ -162,6 +177,7 @@ void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigne
 		cout << "Operation at address " << std::hex << address << " caused " << response->misses << " miss(es)." << std::dec << endl;
 
 	cout << "-----------------------------------------" << endl;
+    this->cache->print();
 
 	return;
 }

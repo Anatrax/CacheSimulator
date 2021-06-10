@@ -8,6 +8,7 @@
 #define _CACHECONTROLLER_H_
 
 #include "CacheStuff.h"
+#include "cache.hpp"
 #include <string>
 #include <fstream>
 
@@ -24,6 +25,7 @@ class CacheController {
 		std::string inputFile, outputFile;
 
 		CacheInfo ci;
+        Cache* cache;
 
 		// function to allow read or write access to the cache
 		void cacheAccess(CacheResponse*, bool, unsigned long int, int);
@@ -35,6 +37,7 @@ class CacheController {
 
 	public:
 		CacheController(CacheInfo, std::string);
+        ~CacheController();
 		void runTracefile();
 };
 
