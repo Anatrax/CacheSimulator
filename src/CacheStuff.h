@@ -32,11 +32,11 @@ struct CacheInfo {
 
 // this structure can filled with information about each memory operation
 struct CacheResponse {
-	int hits; // how many caches did this memory operation hit?
-	int misses; // how many caches did this memory operation miss?
-	int evictions; // did this memory operation involve one or more evictions?
-	int dirtyEvictions; // were any evicted blocks marked as dirty? (relevant for write-back cache)
-	unsigned int cycles; // how many clock cycles did this operation take?
+	int hits = 0; // how many caches did this memory operation hit?
+	int misses = 0; // how many caches did this memory operation miss?
+	int evictions = 0; // did this memory operation involve one or more evictions?
+	int dirtyEvictions = 0; // were any evicted blocks marked as dirty? (relevant for write-back cache)
+	unsigned int cycles = 0; // how many clock cycles did this operation take?
 };
 
 #endif //CACHESTUFF

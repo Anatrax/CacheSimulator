@@ -27,7 +27,6 @@ CacheController::CacheController(CacheInfo ci, string tracefile) {
 	this->globalEvictions = 0;
 	
 	// create your cache structure
-	// ...
     this->cache = new Cache(ci);
 
 	// manual test code to see if the cache is behaving properly
@@ -115,8 +114,8 @@ void CacheController::runTracefile() {
 		outfile << endl;
 	}
 	// add the final cache statistics
-	outfile << "Hits: " << globalHits << " Misses: " << globalMisses << " Evictions: " << globalEvictions << endl;
-	outfile << "Cycles: " << globalCycles << endl;
+	outfile << "L1 Cache: Hits:" << globalHits << " Misses:" << globalMisses << " Evictions:" << globalEvictions << endl;
+	outfile << "Cycles:" << globalCycles << " Reads:" << globalReads << " Writes:" << globalWrites << endl;
 
 	infile.close();
 	outfile.close();
@@ -126,7 +125,7 @@ void CacheController::runTracefile() {
 	Report the results of a memory access operation.
 */
 void CacheController::logEntry(ofstream& outfile, CacheResponse* response) {
-	outfile << " " << response->cycles;
+	outfile << " " << response->cycles << " L1";
 	if (response->hits > 0)
 		outfile << " hit";
 	if (response->misses > 0)
@@ -158,23 +157,28 @@ void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigne
 	cout << "\tSet index: " << ai.setIndex << ", tag: " << ai.tag << endl;
 	
 	// your code should also calculate the proper number of cycles that were used for the operation
-	response->cycles = 0;
+	// response->cycles = 0;
 	
 	// your code needs to update the global counters that track the number of hits, misses, and evictions
     for(unsigned long int access_block = address & ~(this->ci.blockSize-1); access_block < address+numBytes; access_block+=this->ci.blockSize) {
         this->cache->access(response, isWrite, ai.setIndex, ai.tag, numBytes);
-        // Calculate cycles for cache miss
-        if(response->misses) {
-            if(access_block != (address & ~(this->ci.blockSize-1))) response->cycles++;
-            else response->cycles+= this->ci.memoryAccessCycles;
-        }
-        response->cycles+= this->ci.cacheAccessCycles;
+        // // Calculate cycles for cache miss
+        // if(response->misses) {
+        //     if(access_block != (address & ~(this->ci.blockSize-1))) response->cycles++;
+        //     else response->cycles+= this->ci.memoryAccessCycles;
+        // }
+        // response->cycles+= this->ci.cacheAccessCycles;
     }
+	this->globalHits+= response->hits;
+	this->globalMisses+= response->misses;
+	this->globalCycles+= response->cycles;
+	this->globalReads+= !isWrite;
+	this->globalWrites+= isWrite;
 
 	if (response->hits > 0)
-		cout << "Operation at address " << std::hex << address << " caused " << response->hits << " hit(s)." << std::dec << endl;
+		cout << "Operation at address 0x" << std::hex << address << " caused " << std::dec << response->hits << " hit(s)." << endl;
 	if (response->misses > 0)
-		cout << "Operation at address " << std::hex << address << " caused " << response->misses << " miss(es)." << std::dec << endl;
+		cout << "Operation at address 0x" << std::hex << address << " caused " << std::dec << response->misses << " miss(es)." << endl;
 
 	cout << "-----------------------------------------" << endl;
     this->cache->print();

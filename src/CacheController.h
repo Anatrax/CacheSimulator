@@ -22,6 +22,8 @@ class CacheController {
 		unsigned int globalHits;
 		unsigned int globalMisses;
 		unsigned int globalEvictions;
+		unsigned int globalReads;
+		unsigned int globalWrites;
 		std::string inputFile, outputFile;
 
 		CacheInfo ci;

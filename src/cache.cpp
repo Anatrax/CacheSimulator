@@ -19,43 +19,72 @@ Cache::~Cache() {
 }
 
 void Cache::access(CacheResponse* response, bool isWrite, unsigned int setIndex, unsigned long int tag, int numBytes) {
+    response->cycles+= this->cache_info.cacheAccessCycles;
+
     std::list<struct CacheEntry>* set = this->data[setIndex];
     for(auto & ablock : *set) {
         if(ablock.valid && (ablock.tag == tag)) {
             response->hits++;
-//            if(isWrite) ablock.dirty = true;
+            if(isWrite) {
+                ablock.dirty = true;
+                if(this->cache_info.wp == WritePolicy::WriteThrough) {
+                    // Write modified data to main memory
+                    response->cycles+= this->cache_info.memoryAccessCycles;
+                    ablock.dirty = false;
+                }
+            }
             return;
         }
     }
     response->misses++;
-    // Get next available cache block
-    struct CacheEntry& block = set->front();
+
+    // Get next available cache block;
     if(this->cache_info.rp == ReplacementPolicy::Random) {
         // Rotate the list randomly
-        int count = 0;
         int index = rand() % this->cache_info.associativity;
-        while(count < index) {
-            block = set->front();
+        for(int count = 0; count < index; count++) {
+            struct CacheEntry block = set->front();
             set->pop_front();
             set->push_back(block);
-            count++;
         }
     }
-    block = set->front();
+    for(unsigned int i = 0; (i < this->cache_info.associativity) && (set->front().valid); i++) {
+        // Keep rotating until one or zero avaiable blocks found
+        struct CacheEntry block = set->front();
+        set->pop_front();
+        set->push_back(block);
+    }
+    struct CacheEntry& nextAvailableBlock = set->front();
 
-    // Load byte into cache block
-    block.valid = true;
-    if(isWrite) block.dirty = true;
-    block.tag = tag;
+    // Check for evictions
+    if(nextAvailableBlock.valid) {
+        // response->cycles+= this->cache_info.cacheAccessCycles;
+        // No available blocks, must evict
+        if(nextAvailableBlock.dirty && this->cache_info.wp == WritePolicy::WriteBack) {
+            // Block to evict has been modified, write-back data to main memory
+            // response->cycles+= this->cache_info.memoryAccessCycles;
+            nextAvailableBlock.dirty = false;
+            response->dirtyEvictions++;
+        }
+        response->evictions++;
+    }
 
-//    //check if
-//    //if dirty,
-//    //run cache_eviction
-//    //place data into evicted block
-////    ablock.valid = true;
-////    if(isWrite) ablock.dirty = true;
-////    ablock.tag = tag;
-//    *this->data[setIndex].push_back(nextAvailableBlock); // Place back into list
+    // Load/Store byte from/into cache block
+    // response->cycles+= this->cache_info.memoryAccessCycles;
+    nextAvailableBlock.valid = true;
+    if(isWrite) {
+        nextAvailableBlock.dirty = true;
+        if(this->cache_info.wp == WritePolicy::WriteThrough) {
+            response->cycles+= this->cache_info.memoryAccessCycles;
+            nextAvailableBlock.dirty = false;
+        }
+    }
+    nextAvailableBlock.tag = tag;
+
+    // Move block to end of LRU list
+    struct CacheEntry block = set->front();
+    set->pop_front();
+    set->push_back(block);
 }
 
 void Cache::print() {
