@@ -169,6 +169,7 @@ void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigne
         // }
         // response->cycles+= this->ci.cacheAccessCycles;
     }
+	std::cout << "DEBUG{hits:"<< response->hits <<"; misses:"<< response->misses << "; cycles:" << response->cycles << "}" << std::endl;
 	this->globalHits+= response->hits;
 	this->globalMisses+= response->misses;
 	this->globalCycles+= response->cycles;
