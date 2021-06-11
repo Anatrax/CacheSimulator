@@ -162,27 +162,22 @@ void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigne
 	// your code needs to update the global counters that track the number of hits, misses, and evictions
     for(unsigned long int access_block = address & ~(this->ci.blockSize-1); access_block < address+numBytes; access_block+=this->ci.blockSize) {
         this->cache->access(response, isWrite, ai.setIndex, ai.tag, numBytes);
-        // // Calculate cycles for cache miss
-        // if(response->misses) {
-        //     if(access_block != (address & ~(this->ci.blockSize-1))) response->cycles++;
-        //     else response->cycles+= this->ci.memoryAccessCycles;
-        // }
-        // response->cycles+= this->ci.cacheAccessCycles;
     }
-	std::cout << "DEBUG{hits:"<< response->hits <<"; misses:"<< response->misses << "; cycles:" << response->cycles << "}" << std::endl;
-	this->globalHits+= response->hits;
-	this->globalMisses+= response->misses;
 	this->globalCycles+= response->cycles;
 	this->globalReads+= !isWrite;
 	this->globalWrites+= isWrite;
 
-	if (response->hits > 0)
+	if (response->hits > 0) {
 		cout << "Operation at address 0x" << std::hex << address << " caused " << std::dec << response->hits << " hit(s)." << endl;
-	if (response->misses > 0)
+		this->globalHits+= response->hits;
+	} else if (response->misses > 0) {
 		cout << "Operation at address 0x" << std::hex << address << " caused " << std::dec << response->misses << " miss(es)." << endl;
+		this->globalMisses+= response->misses;
+		this->globalEvictions+= response->evictions;
+	}
 
 	cout << "-----------------------------------------" << endl;
-    this->cache->print();
+    // this->cache->print();
 
 	return;
 }

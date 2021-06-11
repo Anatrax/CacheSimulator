@@ -21,24 +21,50 @@ Cache::~Cache() {
 void Cache::access(CacheResponse* response, bool isWrite, unsigned int setIndex, unsigned long int tag, int numBytes) {
     // Index into cache set
     std::list<struct CacheEntry>* set = this->data[setIndex];
+    bool is_prefetched = ((
+            (tag << (this->cache_info.numSetIndexBits + this->cache_info.numByteOffsetBits))
+            | (setIndex << this->cache_info.numByteOffsetBits)
+        )
+        + this->cache_info.blockSize
+        == this->prefetchAddress
+    );
+    this->prefetchAddress = ((tag << (this->cache_info.numByteOffsetBits + this->cache_info.numSetIndexBits)) | (setIndex << this->cache_info.numByteOffsetBits));
 
     // Loop through and check blocks
-    bool foundTag = false;
     bool allFull = true;
-    struct CacheEntry& nextAvailableBlock = set->front(); // Init reference with non-null value
     for(auto & ablock : *set) {
-        if(ablock.valid) {
-            if(ablock.tag == tag) {
-                response->hits++;
-                std::cout << "Hit!" << std::endl;
-                foundTag = true;
-                nextAvailableBlock = ablock;
+        if(ablock.valid && ablock.tag == tag) {
+            response->hits++;
+            if(isWrite) {
+                // Modify the data in the cache
+                std::cout << "->";
+                response->cycles+= this->cache_info.cacheAccessCycles;
+                ablock.valid = true;
+                ablock.dirty = true;
+                ablock.tag = tag;
+
+                // Write modified data to main memory if using write-through
+                if(ablock.dirty && this->cache_info.wp == WritePolicy::WriteBack) {
+                    std::cout << "=>";
+                    if(is_prefetched) response->cycles++;
+                    else response->cycles+= this->cache_info.memoryAccessCycles;
+                    ablock.dirty = false;
+                    ablock.valid = false;
+                }
+            } else {
+                // Read data from cache
+                std::cout << "<-";
+                response->cycles+= this->cache_info.cacheAccessCycles;
             }
+            std::cout << std::endl;
+            return;
         } else allFull = false;
     }
+    response->misses++;
 
     // If no available blocks, must get a block to evict
-    if(!foundTag && allFull) {
+    struct CacheEntry& nextAvailableBlock = set->front(); // Init reference with non-null value
+    if(allFull) {
         // Rotate list randomly if using random replacement
         if(this->cache_info.rp == ReplacementPolicy::Random) {
             int index = rand() % this->cache_info.associativity;
@@ -57,98 +83,77 @@ void Cache::access(CacheResponse* response, bool isWrite, unsigned int setIndex,
         }
 
         // Get the next available block (LRU unless randomized)
-        // struct CacheEntry& nextAvailableBlock = set->front();
         nextAvailableBlock = set->front();
 
         // Save updates now if using write-back
         if(nextAvailableBlock.dirty && this->cache_info.wp == WritePolicy::WriteBack) {
             // Block to evict has been modified, write-back data to main memory
-            response->cycles+= this->cache_info.memoryAccessCycles;
+            std::cout << "=>";
+            if(is_prefetched) response->cycles++;
+            else response->cycles+= this->cache_info.memoryAccessCycles;
             nextAvailableBlock.dirty = false;
             response->dirtyEvictions++;
         }
 
         // Evict the block
-        std::cout << "Evicting block!" << std::endl;
         nextAvailableBlock.valid = false;
         nextAvailableBlock.dirty = false;
         response->evictions++;
     }
 
-    // Load block if missing from cache
-    if(!foundTag) this->load(response);
+    // Check for evictions
+    if(nextAvailableBlock.valid) {
+        // Save updates now if using write-back
+        if(nextAvailableBlock.dirty && this->cache_info.wp == WritePolicy::WriteBack) {
+            // Block to evict has been modified, write-back data to main memory
+            std::cout << "=>";
+            if(is_prefetched) response->cycles++;
+            else response->cycles+= this->cache_info.memoryAccessCycles;
+            nextAvailableBlock.dirty = false;
+            response->dirtyEvictions++;
+        }
+
+        // Evict the block
+        nextAvailableBlock.valid = false;
+        nextAvailableBlock.dirty = false;
+        if(!is_prefetched) response->evictions++;
+    }
+
+    // Load block into cache
+    std::cout << "<=";
+    if(is_prefetched) response->cycles++;
+    else response->cycles+= this->cache_info.memoryAccessCycles;
+    nextAvailableBlock.valid = true;
+    nextAvailableBlock.tag = tag;
 
     if(isWrite) {
         // Modify the data in the cache
-        this->write(response, nextAvailableBlock, tag);
+        std::cout << "->";
+        response->cycles+= this->cache_info.cacheAccessCycles;
+        nextAvailableBlock.valid = true;
+        nextAvailableBlock.dirty = true;
+        nextAvailableBlock.tag = tag;
 
         // Write modified data to main memory if using write-through
-        if(nextAvailableBlock.dirty && this->cache_info.wp == WritePolicy::WriteBack)
-            this->store(response, nextAvailableBlock);
+        if(nextAvailableBlock.dirty && this->cache_info.wp == WritePolicy::WriteBack) {
+            std::cout << "=>";
+            if(is_prefetched) response->cycles++;
+            else response->cycles+= this->cache_info.memoryAccessCycles;
+            nextAvailableBlock.dirty = false;
+            nextAvailableBlock.valid = false;
+        }
+    } else {
+        // Read data from cache
+        std::cout << "<-";
+        response->cycles+= this->cache_info.cacheAccessCycles;
     }
-    else this->read(response); // Read data from cache
 
     // Move block to end of LRU/Random list
     struct CacheEntry block = set->front();
     set->pop_front();
     set->push_back(block);
 
-//////////////////////////
-    // response->cycles+= this->cache_info.cacheAccessCycles;
-
-    // for(auto & ablock : *set) {
-    //     if(ablock.valid && (ablock.tag == tag)) {
-    //         response->hits++;
-    //         if(isWrite) {
-    //             ablock.dirty = true;
-    //             if(this->cache_info.wp == WritePolicy::WriteThrough) {
-    //                 // Write modified data to main memory
-    //                 response->cycles+= this->cache_info.memoryAccessCycles;
-    //                 ablock.dirty = false;
-    //             }
-    //         }
-    //         return;
-    //     }
-    // }
-    // response->misses++;
-
-    // // Check for evictions
-    // if(nextAvailableBlock.valid) {
-    //     // response->cycles+= this->cache_info.cacheAccessCycles;
-    //     // No available blocks, must evict
-    //     if(nextAvailableBlock.dirty && this->cache_info.wp == WritePolicy::WriteBack) {
-    //         // Block to evict has been modified, write-back data to main memory
-    //         // response->cycles+= this->cache_info.memoryAccessCycles;
-    //         nextAvailableBlock.dirty = false;
-    //         response->dirtyEvictions++;
-    //     }
-    //     response->evictions++;
-    // }
-
-    // // Load/Store byte from/into cache block
-    // // response->cycles+= this->cache_info.memoryAccessCycles;
-    // nextAvailableBlock.valid = true;
-    // if(isWrite) {
-    //     nextAvailableBlock.dirty = true;
-    //     if(this->cache_info.wp == WritePolicy::WriteThrough) {
-    //         response->cycles+= this->cache_info.memoryAccessCycles;
-    //         nextAvailableBlock.dirty = false;
-    //     }
-    // }
-    // nextAvailableBlock.tag = tag;
-}
-
-void Cache::load(CacheResponse* response) {
-    response->misses++;
-    std::cout << "Fetching block!" << std::endl;
-    response->cycles+= this->cache_info.memoryAccessCycles;
-}
-
-void Cache::store(CacheResponse* response, struct CacheEntry& iter) {
-    if(this->cache_info.wp == WritePolicy::WriteThrough) {
-        response->cycles+= this->cache_info.memoryAccessCycles;
-        iter.dirty = false;
-    }
+    std::cout << std::endl;
 }
 
 void Cache::print() {
@@ -172,16 +177,5 @@ void Cache::print() {
         std::cout << std::endl;
     }
     std::cout << "----" << std::endl;
-}
-
-void Cache::read(CacheResponse* response) {
-    response->cycles+= this->cache_info.cacheAccessCycles;
-}
-
-void Cache::write(CacheResponse* response, struct CacheEntry& iter, unsigned long int tag) {
-    response->cycles+= this->cache_info.cacheAccessCycles;
-    iter.valid = true;
-    iter.dirty = true;
-    iter.tag = tag;
 }
 
